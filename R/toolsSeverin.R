@@ -97,7 +97,7 @@
 #' 
 #' 
 #' # calculate profiles
-#' var_list <- profile_pars_per_node(best_fit, 4)
+#' var_list <- profile_pars_node_list(best_fit, 4)
 #' profile_jobname <- paste0(fit_filename,"_profiles_opt")
 #' method <- "optimize"
 #' profiles_distributed_computing <- distributed_computing(
@@ -125,7 +125,7 @@
 #'   cores = 16,
 #'   nodes = 1,
 #'   walltime = "02:00:00",
-#'   ssh_passwd = "domain-possiblyA1",
+#'   ssh_passwd = "password",
 #'   machine = "cluster",
 #'   var_values = var_list,
 #'   no_rep = NULL,
@@ -369,6 +369,9 @@ distributed_computing <- function(
       "# load shared object if precompiled",
       load_so,
       "",
+      "files <- list.files(pattern = '.so')",
+      "for (f in files) dyn.load(f)",
+      "",
       "# List of variablevalues",
       var_list,
       "",
@@ -511,8 +514,7 @@ distributed_computing <- function(
 #' per node.
 #' @examples
 #' \dontrun{
-#' parameter_list <- setNames(1:10, letters[1:10])
-#' var_list <- profile_pars_per_node(parameter_list, 4)
+#' var_list <- profile_pars_node_list(parameter_list, 4)
 #' }
 #' 
 #' @export
@@ -529,7 +531,7 @@ profile_pars_per_node <- function(parameters, fits_per_node) {
   # generate the lists which parameters are send to wich node
   pars_from <- fits_per_node
   pars_to_vec <- fits_per_node
-  while (pars_from <= (n_pars)) {
+  while (pars_from < (n_pars)) {
     pars_from <- pars_from + fits_per_node
     pars_to_vec <- c(pars_to_vec, pars_from)
   }

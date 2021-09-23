@@ -19,7 +19,6 @@
 #' @param verbose Logical, print verbose messages.
 #' @param cores number of cores used when computing profiles for several
 #' parameters.
-#' @param cautiousMode Logical, write every step to disk and don't delete intermediate results
 #' @param ... Arguments going to obj()
 #' @details Computation of the profile likelihood is based on the method of Lagrangian multipliers
 #' and Euler integration of the corresponding differential equation of the profile likelihood paths.
@@ -56,11 +55,7 @@ profile <- function(obj, pars, whichPar, alpha = 0.05,
                     optControl  = NULL,
                     verbose = FALSE,
                     cores = 1,
-                    cautiousMode = FALSE,
                     ...) {
-  # Ensure that obj is defined in this environment such that it is copied to the parallel workers
-  force(obj)
-  
   
   # Guarantee that pars is named numeric without deriv attribute
   dotArgs <- list(...)
@@ -92,11 +87,9 @@ profile <- function(obj, pars, whichPar, alpha = 0.05,
   if (!is.null(optControl )) oControl[match(names(optControl), names(oControl ))] <- optControl
   
   
-  # Create interRes folder for cautiousMode
-  if (cautiousMode){
-    interResFolder <- "profiles-interRes"
-    dir.create(interResFolder,showWarnings = FALSE)
-  }
+  
+  
+  
   
   
   # Start cluster if on windows
@@ -417,18 +410,6 @@ profile <- function(obj, pars, whichPar, alpha = 0.05,
                                              out.attributes, 
                                              y))
                               
-                              if(cautiousMode) {
-                                outCautious <- as.data.frame(out)
-                                outCautious$whichPar <- whichPar.name
-                                outCautious <- parframe(
-                                  outCautious,
-                                  parameters = names(pars),
-                                  metanames = c("value", "constraint", "stepsize", "gamma", "whichPar"),
-                                  obj.attributes = names(out.attributes)
-                                )
-                                dput(outCautious, file = file.path(interResFolder, paste0(whichPar.name, "-right.R")))
-                              }
-                              
                               value <- lagrange.out[[sControl$stop]]
                               if (value > threshold | constraint.out$value > limits[2]) break
                               
@@ -488,19 +469,6 @@ profile <- function(obj, pars, whichPar, alpha = 0.05,
                                              out.attributes,
                                              y), 
                                            out)
-                              
-                              if(cautiousMode) {
-                                outCautious <- as.data.frame(out)
-                                outCautious$whichPar <- whichPar.name
-                                outCautious <- parframe(
-                                  outCautious,
-                                  parameters = names(pars),
-                                  metanames = c("value", "constraint", "stepsize", "gamma", "whichPar"),
-                                  obj.attributes = names(out.attributes)
-                                )
-                                dput(outCautious, file = file.path(interResFolder, paste0(whichPar.name, "-left.R")))
-                              }
-                              
                               
                               value <- lagrange.out[[sControl$stop]]
                               if (value > threshold | constraint.out$value < limits[1]) break
@@ -702,7 +670,7 @@ vcov <- function(fit, parupper = NULL, parlower = NULL) {
   subvcov__ <- try(solve(0.5*subhessian__), silent = TRUE)
   if (inherits(subvcov__, "try-error")) subvcov__ <- MASS::ginv(subhessian__)
   vcov__[!is_fixed__, !is_fixed__] <- subvcov__
-  
+
   # This part should not be necessary due to regularization usually done
   # Perform identifiability check based on
   # subvcov__ <- vcov__[!is_fixed__, !is_fixed__, drop = FALSE]
@@ -756,7 +724,6 @@ vcov <- function(fit, parupper = NULL, parlower = NULL) {
 #'   are handed to the objective function objfun(). The log file starts with a 
 #'   table telling which parameter was assigend to which function.
 #' @param output logical. If true, writes output to the disc.
-#' @param cautiousMode Logical, write every fit to disk in deparsed form (avoids the RDA incompatibility trap) and don't delete intermediate results
 #'   
 #' @details By running multiple fits starting at randomly chosen inital 
 #'   parameters, the chisquare landscape can be explored using a deterministic 
@@ -797,7 +764,7 @@ vcov <- function(fit, parupper = NULL, parlower = NULL) {
 #' @export
 #' @import parallel
 mstrust <- function(objfun, center, studyname, rinit = .1, rmax = 10, fits = 20, cores = 1, optmethod = "trust",
-                    samplefun = "rnorm", resultPath = ".", stats = FALSE, output = FALSE, cautiousMode = FALSE,
+                    samplefun = "rnorm", resultPath = ".", stats = FALSE, output = FALSE,
                     ...) {
   
   narrowing <- NULL
@@ -811,13 +778,20 @@ mstrust <- function(objfun, center, studyname, rinit = .1, rmax = 10, fits = 20,
   # Gather all function arguments
   varargslist <- list(...)
   
-  argslist <- list(
-    objfun = objfun, center = center, studyname = studyname,
-    rinit = rinit, rmax = rmax, fits = fits, 
-    cores = cores, optmethod = optmethod, samplefun = samplefun, 
-    resultPath = resultPath, stats = stats, output = output, 
-    cautiousMode = cautiousMode)
+  argslist <- as.list(formals())
+  argslist <- argslist[names(argslist) != "..."]
+  
+  argsmatch <- as.list(match.call(expand.dots = TRUE))
+  namesinter <- intersect(names(argslist), names(argsmatch))
+  
+  argslist[namesinter] <- argsmatch[namesinter]
   argslist <- c(argslist, varargslist)
+  
+  # 
+  argslist[["objfun"]] <- force(objfun)
+  argslist[["center"]] <- force(center)
+  argslist[["rinit"]] <- force(rinit)
+  argslist[["rmax"]] <- force(rmax)
   
   # Add extra arguments
   argslist$n <- length(center) # How many inital values do we need?
@@ -984,7 +958,7 @@ mstrust <- function(objfun, center, studyname, rinit = .1, rmax = 10, fits = 20,
     # Write current fit to disk
     if (output) {
       saveRDS(fit, file = file.path(interResultFolder, paste0("fit-", i, ".Rda")))
-      if (cautiousMode) dput(fit[c("value", "argument", "iterations", "converged")], file = file.path(interResultFolder, paste0("fit-", i, ".R")))
+      
       # Reporting
       # With concurent jobs and everyone reporting, this is a classic race
       # condition. Assembling the message beforhand lowers the risk of interleaved
@@ -1056,11 +1030,8 @@ mstrust <- function(objfun, center, studyname, rinit = .1, rmax = 10, fits = 20,
   if (output) saveRDS(m_parlist, file = fileParList)
   
   # Remove temporary files
-  if (!cautiousMode) {
-    unlink(interResultFolder, recursive = TRUE)
-  } else {
-    for (f in list.files(interResultFolder, "Rda$")) unlink(f)
-  }
+  unlink(interResultFolder, recursive = TRUE)
+  
   
   # Show summary
   sum.error <- sum(idxStatus == m_trustFlags.error)

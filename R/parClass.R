@@ -115,7 +115,6 @@ plot.parlist <- function(x, path = FALSE, ...) {
 
 
 #' @export
-#' @importFrom data.table as.data.table rbindlist
 #' @rdname as.parframe
 #' @param sort.by character indicating by which colum the returned parameter frame
 #' should be sorted. Defaults to \code{"value"}.
@@ -127,15 +126,12 @@ as.parframe.parlist <- function(x, sort.by = "value", ...) {
                            value = vapply(x[m_idx], function(.x) .x$value, 1.0),
                            converged = vapply(x[m_idx], function(.x) .x$converged, TRUE),
                            iterations = vapply(x[m_idx], function(.x) as.integer(.x$iterations), 1L))
-  
-  parameters <- lapply(x[m_idx], function(x) data.table::as.data.table(as.list(x$argument)))
-  parameters <- data.table::rbindlist(parameters)
-  m_parframe <- cbind(m_parframe, parameters)
-  
+  m_parframe <- cbind(m_parframe,
+                      as.data.frame(t(vapply(x[m_idx], function(.x) .x$argument, x[[1]]$argument))))
   # Sort by value
   m_parframe <- m_parframe[order(m_parframe[sort.by]),]
   
-  parframe(m_parframe, parameters = names(parameters), metanames = m_metanames)
+  parframe(m_parframe, parameters = names(x[[m_idx[1]]]$argument), metanames = m_metanames)
 }
 
 
