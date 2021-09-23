@@ -1,0 +1,13 @@
+.Rproj.user
+.Rhistory
+.RData
+.Rbuildignore
+.gitignore.swp
+.f*
+CompiledObjects
+Test
+
+# Compiled objects
+*.c
+*.o
+*.so
